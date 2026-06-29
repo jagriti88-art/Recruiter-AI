@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual Environment
+venv/
+.venv/
+
+# VS Code
+.vscode/
+
+# Model files
+models/*.faiss
+models/*.pkl
+
+# Environment variables
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
