@@ -1,3 +1,8 @@
+submission.csv
+
+data/job_description.txt
+jd.docx
+models/candidate_embeddings.npy
 # Python
 __pycache__/
 *.pyc
@@ -18,4 +23,5 @@ models/*.pkl
 
 # OS files
 .DS_Store
+
 Thumbs.db

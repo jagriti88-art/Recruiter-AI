@@ -1,121 +1,100 @@
-def calculate_rule_score(candidate):
+from src.jd_parser import extract_jd_features
+
+
+def calculate_rule_score(candidate, jd_text):
+
+    jd = extract_jd_features(jd_text)
 
     score = 0
 
     profile = candidate["profile"]
-    skills = candidate["skills"]
-    history = candidate["career_history"]
-    signals = candidate["redrob_signals"]
 
-    # --------------------------
-    # 1. Experience (20 points)
-    # --------------------------
+    candidate_skills = {
+        skill["name"].lower()
+        for skill in candidate["skills"]
+    }
+
+    # --------------------
+    # Experience
+    # --------------------
 
     exp = profile["years_of_experience"]
 
-    if 5 <= exp <= 9:
-        score += 20
-    elif 4 <= exp < 5 or 9 < exp <= 10:
-        score += 10
+    if jd["min_exp"] <= exp <= jd["max_exp"]:
+        score += 25
 
-    # --------------------------
-    # 2. Current Role (15 points)
-    # --------------------------
+    elif abs(exp - jd["min_exp"]) <= 2:
+        score += 18
+
+    else:
+        score += 8
+
+    # --------------------
+    # Skill Matching
+    # --------------------
+
+    matched = 0
+
+    for skill in jd["skills"]:
+
+        if skill in candidate_skills:
+
+            matched += 1
+
+    if len(jd["skills"]) > 0:
+
+        score += (matched / len(jd["skills"])) * 40
+
+    # --------------------
+    # Preferred Location
+    # --------------------
+
+    location = profile["location"].lower()
+
+    for city in jd["locations"]:
+
+        if city in location:
+
+            score += 10
+
+            break
+
+    # --------------------
+    # Job Title Bonus
+    # --------------------
 
     title = profile["current_title"].lower()
 
-    good_titles = [
-        "ai",
-        "machine learning",
+    important_titles = [
+        "ai engineer",
         "ml engineer",
-        "data scientist",
-        "nlp",
-        "search",
-        "recommendation",
-        "backend engineer"
+        "machine learning engineer",
+        "software engineer",
+        "research engineer",
+        "data scientist"
     ]
 
-    for t in good_titles:
-        if t in title:
-            score += 15
-            break
+    if any(t in title for t in important_titles):
 
-    # --------------------------
-    # 3. Skills (30 points)
-    # --------------------------
+        score += 15
 
-    important_skills = [
-        "python",
-        "faiss",
-        "pinecone",
-        "weaviate",
-        "milvus",
-        "qdrant",
-        "sentence transformers",
-        "embedding",
-        "llm",
-        "fine-tuning llms",
-        "retrieval",
-        "ranking",
-        "spark",
-        "airflow",
-        "sql"
-    ]
+    # --------------------
+    # Summary contains ranking/search words
+    # --------------------
 
-    candidate_skills = [
-        s["name"].lower()
-        for s in skills
-    ]
-
-    for skill in important_skills:
-
-        for user_skill in candidate_skills:
-
-            if skill in user_skill:
-                score += 2
-                break
-
-    # --------------------------
-    # 4. Career History (20 points)
-    # --------------------------
+    summary = profile["summary"].lower()
 
     keywords = [
         "retrieval",
         "ranking",
         "recommendation",
-        "embedding",
-        "vector",
-        "llm",
         "search",
-        "machine learning",
-        "production",
-        "faiss"
+        "embedding",
+        "vector"
     ]
 
-    for job in history:
+    count = sum(k in summary for k in keywords)
 
-        description = job["description"].lower()
-
-        for word in keywords:
-
-            if word in description:
-                score += 2
-
-    # --------------------------
-    # 5. Open To Work (5 points)
-    # --------------------------
-
-    if signals["open_to_work_flag"]:
-        score += 5
-
-    # --------------------------
-    # 6. Notice Period (5 points)
-    # --------------------------
-
-    if signals["notice_period_days"] <= 30:
-        score += 5
-
-    elif signals["notice_period_days"] <= 60:
-        score += 3
+    score += min(count * 2, 10)
 
     return min(score, 100)

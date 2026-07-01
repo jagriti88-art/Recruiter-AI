@@ -1,15 +1,42 @@
+
 import faiss
 import pickle
+
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from read_jd import read_jd
-from rule_score import calculate_rule_score
+from src.rule_score import calculate_rule_score
+from src.read_jd import read_jd
+from src.company_score import company_score
+from src.experience_score import experience_score
+from src.honeypot_detector import honeypot_penalty
+from src.jd_analyzer import analyze_jd
+
+# -----------------------------------
+# Load Everything Once
+# -----------------------------------
+
+print("Loading Sentence Transformer...")
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+print("Loading FAISS Index...")
+index = faiss.read_index("models/candidate_index.faiss")
+
+print("Loading Candidate Data...")
+with open("models/candidate_data.pkl", "rb") as f:
+    candidates = pickle.load(f)
+
+print("Loading Candidate Embeddings...")
+with open("models/candidate_embeddings.pkl", "rb") as f:
+    embeddings = pickle.load(f)
+
+print("Recruiter AI Ready!\n")
 
 
-# -----------------------------
-# Recruiter Score
-# -----------------------------
+# -----------------------------------
+# Recruiter Behavior Score
+# -----------------------------------
+
 def recruiter_score(signals):
 
     score = 0
@@ -18,118 +45,146 @@ def recruiter_score(signals):
         score += 0.25
 
     score += signals["recruiter_response_rate"] * 0.20
-    score += min(signals["github_activity_score"]/10,1) * 0.15
-    score += min(signals["profile_completeness_score"]/100,1) * 0.10
-    score += min(signals["interview_completion_rate"],1) * 0.15
-    score += min(signals["offer_acceptance_rate"],1) * 0.10
-    score += min(signals["saved_by_recruiters_30d"]/10,1) * 0.05
-    score += min(signals["search_appearance_30d"]/300,1) * 0.05
+    score += min(signals["github_activity_score"] / 10, 1) * 0.15
+    score += min(signals["profile_completeness_score"] / 100, 1) * 0.10
+    score += min(signals["interview_completion_rate"], 1) * 0.15
+    score += min(signals["offer_acceptance_rate"], 1) * 0.10
+    score += min(signals["saved_by_recruiters_30d"] / 10, 1) * 0.05
+    score += min(signals["search_appearance_30d"] / 300, 1) * 0.05
 
-    if signals["notice_period_days"] <= 30:
+    notice = signals["notice_period_days"]
+
+    if notice <= 30:
         score += 0.10
-    elif signals["notice_period_days"] <= 60:
+    elif notice <= 60:
         score += 0.05
 
-    return min(score,1)
+    return min(score, 1)
 
 
-# -----------------------------
-# Candidate -> Text
-# -----------------------------
-def candidate_to_text(candidate):
+# -----------------------------------
+# Main Ranking Function
+# -----------------------------------
 
-    p = candidate["profile"]
+def rank_candidates(jd_text, top_k=10):
+    weights = analyze_jd(jd_text)
+    # Create JD embedding
+    jd_embedding = model.encode([jd_text])
 
-    text = f"""
-Headline: {p['headline']}
-Current Title: {p['current_title']}
-Experience: {p['years_of_experience']}
+    # Search top candidates using FAISS
+    distances, indices = index.search(
+    jd_embedding,
+    len(candidates)
+)
 
-Summary:
-{p['summary']}
+    results = []
 
-Skills:
-"""
+    for idx in indices[0]:
 
-    for skill in candidate["skills"]:
-        text += skill["name"] + ", "
+        candidate = candidates[idx]
 
-    text += "\nCareer History:\n"
+        candidate_embedding = embeddings[idx].reshape(1, -1)
 
-    for job in candidate["career_history"]:
+        semantic_score = cosine_similarity(
+            jd_embedding,
+            candidate_embedding
+        )[0][0]
 
-        text += f"""
-Title: {job['title']}
-Company: {job['company']}
-Description:
-{job['description']}
-"""
+        rule_score = calculate_rule_score(
+           candidate,
+        jd_text
+        ) / 100
 
-    return text
+        behavior_score = recruiter_score(
+            candidate["redrob_signals"]
+        )
+        company = company_score(candidate)
+        exp_score = experience_score(candidate)
+        penalty = honeypot_penalty(candidate)
+      
+        final_score = (
+
+    weights["semantic"] * semantic_score +
+
+    weights["rule"] * rule_score +
+
+    weights["behavior"] * behavior_score +
+
+    weights["company"] * (company / 20) +
+
+    weights["experience"] * (exp_score / 30)
+
+)
+   
+        final_score -= penalty * 0.02
+
+        final_score = max(final_score, 0)
+
+        profile = candidate["profile"]
+
+        skills = [
+            skill["name"]
+            for skill in candidate["skills"]
+        ]
+
+        results.append({
+
+            "candidate_id": candidate["candidate_id"],
+
+            "name": profile["anonymized_name"],
+
+            "headline": profile["headline"],
+
+            "current_title": profile["current_title"],
+
+            "company": profile["current_company"],
+
+            "experience": profile["years_of_experience"],
+
+            "location": profile["location"],
+
+            "skills": skills,
+
+            "semantic": round(float(semantic_score), 3),
+
+            "rule": round(rule_score, 3),
+
+            "behavior": round(behavior_score, 3),
+
+            "final": round(float(final_score), 3),
 
 
-print("Loading model...")
-model = SentenceTransformer("all-MiniLM-L6-v2")
+        })
 
-print("Loading FAISS...")
-index = faiss.read_index("models/candidate_index.faiss")
-
-with open("models/candidate_data.pkl","rb") as f:
-    candidates = pickle.load(f)
-
-print("Reading JD...")
-jd = read_jd()
-
-jd_embedding = model.encode([jd])
-
-# -----------------------------
-# Retrieve Top 20
-# -----------------------------
-
-distances, indices = index.search(jd_embedding,20)
-
-results=[]
-
-for idx in indices[0]:
-
-    candidate = candidates[idx]
-
-    candidate_embedding = model.encode(
-        [candidate_to_text(candidate)]
+    results.sort(
+        key=lambda x: x["final"],
+        reverse=True
     )
 
-    semantic = cosine_similarity(
-        jd_embedding,
-        candidate_embedding
-    )[0][0]
+    return results[:top_k]
 
-    rule = calculate_rule_score(candidate)/100
 
-    behavior = recruiter_score(
-        candidate["redrob_signals"]
-    )
 
-    final = (
-        0.50*semantic+
-        0.30*rule+
-        0.20*behavior
-    )
+# -----------------------------------
+# Terminal Testing
+# -----------------------------------
 
-    results.append({
+if __name__ == "__main__":
 
-        "name":candidate["profile"]["anonymized_name"],
-        "id":candidate["candidate_id"],
-        "semantic":round(float(semantic),3),
-        "rule":round(rule,3),
-        "behavior":round(behavior,3),
-        "final":round(float(final),3)
+    from src.read_jd import read_jd
 
-    })
+    jd = read_jd()
 
-results.sort(key=lambda x:x["final"],reverse=True)
+    results = rank_candidates(jd)
 
-print("\nTOP CANDIDATES\n")
+    print("\nTop Candidates\n")
 
-for i,r in enumerate(results[:10],1):
+    for i, r in enumerate(results, 1):
 
-    print(f"{i}. {r['name']}  Score={r['final']}")
+        print(
+            f"{i}. {r['name']} | "
+            f"Final: {r['final']} | "
+            f"Semantic: {r['semantic']} | "
+            f"Rule: {r['rule']} | "
+            f"Behavior: {r['behavior']}"
+        )

@@ -1,22 +1,235 @@
+import json
+
 import streamlit as st
-import subprocess
+from docx import Document
+from streamlit_lottie import st_lottie
+from src.final_ranker import rank_candidates, candidates
+from src.ui import candidate_card
+from src.explainer import generate_reason
 
-st.set_page_config(page_title="Recruiter AI", layout="wide")
 
-st.title("🤖 AI Candidate Ranking System")
+# ==========================================================
+# PAGE CONFIG (Must be first Streamlit command)
+# ==========================================================
 
-st.write("Upload the Job Description and rank candidates.")
+st.set_page_config(
+    page_title="Recruiter AI",
+    page_icon="🤖",
+    layout="wide"
+)
 
-if st.button("Rank Candidates"):
 
-    with st.spinner("Ranking candidates..."):
+# ==========================================================
+# LOAD CSS
+# ==========================================================
 
-        result = subprocess.run(
-            ["python", "src/final_ranker.py"],
-            capture_output=True,
-            text=True
-        )
+with open("assets/styles.css") as f:
+    st.markdown(
+        f"<style>{f.read()}</style>",
+        unsafe_allow_html=True
+    )
 
-    st.success("Ranking Complete!")
 
-    st.text(result.stdout)
+# ==========================================================
+# HELPER FUNCTIONS
+# ==========================================================
+
+def load_lottie(path):
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+def read_docx(file):
+    doc = Document(file)
+
+    text = ""
+
+    for para in doc.paragraphs:
+        text += para.text + "\n"
+
+    return text
+
+
+# ==========================================================
+# LOAD ANIMATION
+# ==========================================================
+
+hero_animation = load_lottie("assets/recruiter.json")
+
+
+# ==========================================================
+# HERO SECTION
+# ==========================================================
+
+left, right = st.columns([1.4, 1])
+
+with left:
+
+    st.markdown(
+        """
+<div class="hero-title">
+🤖 Recruiter AI
+</div>
+
+<div class="hero-sub">
+Intelligent Candidate Discovery & Ranking Platform
+</div>
+""",
+        unsafe_allow_html=True
+    )
+
+    st.write("")
+
+    st.markdown("""
+### 🚀 Why Recruiter AI?
+
+✅ Semantic Candidate Search
+
+✅ Hybrid AI Ranking
+
+✅ Recruiter Behaviour Signals
+
+✅ FAISS Vector Search
+
+✅ LLM Ready
+""")
+
+
+with right:
+
+    st_lottie(
+        hero_animation,
+        height=380,
+        key="hero"
+    )
+
+
+st.divider()
+
+
+# ==========================================================
+# FEATURES
+# ==========================================================
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+    st.info("🧠 Semantic Search")
+
+with c2:
+    st.info("⚡ Hybrid Ranking")
+
+with c3:
+    st.info("🎯 AI Candidate Matching")
+
+
+st.write("")
+
+
+# ==========================================================
+# DASHBOARD
+# ==========================================================
+m1, m2, m3, m4 = st.columns(4)
+
+with m1:
+    st.metric(
+        "👥 Candidates Indexed",
+        f"{len(candidates):,}"
+    )
+
+with m2:
+    st.metric(
+        "🧠 Embedding Model",
+        "MiniLM-L6-v2"
+    )
+
+with m3:
+    st.metric(
+        "⚡ Vector Search",
+        "FAISS"
+    )
+
+with m4:
+    st.metric(
+        "🎯 Ranking",
+        "Hybrid AI"
+    )
+
+
+st.divider()
+
+
+# ==========================================================
+# JD INPUT
+# ==========================================================
+
+st.markdown("## 📄 Upload Job Description")
+
+st.write(
+    "Upload a **DOCX** file or paste the Job Description below."
+)
+
+uploaded_file = st.file_uploader(
+    "Upload Job Description (.docx)",
+    type=["docx"]
+)
+
+st.write("### OR")
+
+jd = st.text_area(
+    "Paste Job Description",
+    height=250,
+    placeholder="Paste the complete Job Description here..."
+)
+
+
+st.write("")
+
+
+# ==========================================================
+# SEARCH BUTTON
+# ==========================================================
+
+search = st.button(
+    "🚀 Find Best Candidates",
+    use_container_width=True
+)
+
+
+# ==========================================================
+# SEARCH
+# ==========================================================
+
+if search:
+
+    if uploaded_file is not None:
+
+        jd_text = read_docx(uploaded_file)
+
+    elif jd.strip():
+
+        jd_text = jd
+
+    else:
+
+        st.warning("⚠ Please upload or paste a Job Description.")
+        st.stop()
+
+    with st.spinner("🤖 AI is analysing candidates..."):
+
+      results = rank_candidates(
+    jd_text,
+    top_k=top_k
+)
+
+    st.success(f"✅ Found {len(results)} Matching Candidates")
+
+    st.divider()
+
+    st.header("🏆 Top Candidate Matches")
+
+    for rank, candidate in enumerate(results, start=1):
+
+        candidate["reason"] = generate_reason(candidate)
+
+        candidate_card(candidate, rank)
