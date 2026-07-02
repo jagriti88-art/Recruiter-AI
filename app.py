@@ -6,6 +6,7 @@ from streamlit_lottie import st_lottie
 from src.final_ranker import rank_candidates, candidates
 from src.ui import candidate_card
 from src.explainer import generate_reason
+import pandas as pd
 
 
 # ==========================================================
@@ -185,6 +186,19 @@ jd = st.text_area(
 
 st.write("")
 
+# ==========================================================
+# TOP-K SELECTION
+# ==========================================================
+
+top_k = st.slider(
+    "Number of candidates to display",
+    min_value=1,
+    max_value=20,
+    value=5,
+    step=1
+)
+
+st.write("")
 
 # ==========================================================
 # SEARCH BUTTON
@@ -195,7 +209,6 @@ search = st.button(
     use_container_width=True
 )
 
-
 # ==========================================================
 # SEARCH
 # ==========================================================
@@ -203,24 +216,21 @@ search = st.button(
 if search:
 
     if uploaded_file is not None:
-
         jd_text = read_docx(uploaded_file)
 
     elif jd.strip():
-
         jd_text = jd
 
     else:
-
         st.warning("⚠ Please upload or paste a Job Description.")
         st.stop()
 
     with st.spinner("🤖 AI is analysing candidates..."):
 
-      results = rank_candidates(
-    jd_text,
-    top_k=top_k
-)
+        results = rank_candidates(
+            jd_text,
+            top_k=top_k
+        )
 
     st.success(f"✅ Found {len(results)} Matching Candidates")
 
@@ -228,8 +238,36 @@ if search:
 
     st.header("🏆 Top Candidate Matches")
 
+    # Display candidate cards
     for rank, candidate in enumerate(results, start=1):
 
         candidate["reason"] = generate_reason(candidate)
 
         candidate_card(candidate, rank)
+
+    # ==========================================================
+    # DOWNLOAD CSV
+    # ==========================================================
+
+    rows = []
+
+    for rank, candidate in enumerate(results, start=1):
+
+        rows.append({
+            "candidate_id": candidate["candidate_id"],
+            "rank": rank,
+            "score": round(candidate["final"], 6),
+            "reasoning": candidate["reason"]
+        })
+
+    submission = pd.DataFrame(rows)
+
+    csv = submission.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="📥 Download Submission CSV",
+        data=csv,
+        file_name="submission.csv",
+        mime="text/csv",
+        use_container_width=True
+    )

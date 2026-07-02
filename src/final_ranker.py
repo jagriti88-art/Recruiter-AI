@@ -25,6 +25,7 @@ index = faiss.read_index("models/candidate_index.faiss")
 print("Loading Candidate Data...")
 with open("models/candidate_data.pkl", "rb") as f:
     candidates = pickle.load(f)
+print(f"Loaded {len(candidates):,} candidate profiles.")
 
 print("Loading Candidate Embeddings...")
 with open("models/candidate_embeddings.pkl", "rb") as f:
@@ -32,6 +33,7 @@ with open("models/candidate_embeddings.pkl", "rb") as f:
 
 print("Recruiter AI Ready!\n")
 
+print(f"Loaded {len(embeddings):,} candidate embeddings.")
 
 # -----------------------------------
 # Recruiter Behavior Score
