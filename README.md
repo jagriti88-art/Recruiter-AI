@@ -1,3 +1,11 @@
+FRONTEND-
+https://drive.google.com/file/d/1tkrzSMYrkE8CADmCB2YL74FUMYtfiBTM/view?usp=sharing
+
+
+Backend-;
+https://drive.google.com/file/d/1qKczNXgwlvE6PLQBHKvDxGR1mOiXwLMb/view?usp=sharing
+
+
 # 🤖 Recruiter AI
 ### Intelligent Candidate Discovery & Ranking System
 
